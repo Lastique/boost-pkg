@@ -120,7 +120,7 @@ void parse_cxx_source(boost::string_ref const& source, dep_tree& root, dep_node&
         {
         case '#':
             {
-                p = skip_spaces(p, end);
+                p = skip_spaces(p + 1, end);
                 if ((end - p) > sizeof("include<>") && std::memcmp(p, "include", sizeof("include") - 1) == 0)
                 {
                     p = skip_spaces(p + sizeof("include") - 1, end);
