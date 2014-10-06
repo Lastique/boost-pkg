@@ -17,6 +17,7 @@
 #include <boost/interprocess/mapped_region.hpp>
 #include <boost/interprocess/exceptions.hpp>
 #include <boost/utility/string_ref.hpp>
+#include <boost/filesystem/operations.hpp>
 #include <cxx_parser.hpp>
 
 namespace {
@@ -92,11 +93,40 @@ inline const char* find_closing_quote_with_escapes(const char* p, const char* en
     }
 }
 
-inline void add_include(boost::string_ref const& header, dep_tree& root, dep_node& node, bool create_reverse_dependencies)
+//! Obtains the status of the file, ignoring any level of symlinks
+inline boost::filesystem::file_status peel_symlinks_status(boost::filesystem::path& path)
 {
-    if (header.starts_with("boost"))
+    boost::filesystem::file_status file_stat = boost::filesystem::status(path);
+    while (boost::filesystem::is_symlink(file_stat))
     {
-        dep_node* other = root.add_nested_child(header);
+        path = boost::filesystem::read_symlink(path);
+        file_stat = boost::filesystem::status(path);
+    }
+    return file_stat;
+}
+
+void add_include(boost::string_ref const& included_header, dep_tree& root, dep_node& node, boost::filesystem::path const& header_dir, std::vector< boost::filesystem::path > const& include_dirs, bool use_header_dir, bool create_reverse_dependencies)
+{
+    boost::filesystem::path path(included_header.to_string());
+    boost::filesystem::path full_path;
+
+    boost::filesystem::file_status file_stat;
+    if (use_header_dir)
+    {
+        full_path = header_dir / path;
+        file_stat = peel_symlinks_status(full_path);
+    }
+
+    std::vector< boost::filesystem::path >::const_iterator it = include_dirs.begin(), end = include_dirs.end();
+    for (; it != end && !boost::filesystem::is_regular_file(file_stat); ++it)
+    {
+        full_path = *it / path;
+        file_stat = peel_symlinks_status(full_path);
+    }
+
+    if (boost::filesystem::is_regular_file(file_stat))
+    {
+        dep_node* other = root.add_nested_child(included_header);
         node.add_dependency(other);
         if (create_reverse_dependencies)
         {
@@ -106,8 +136,9 @@ inline void add_include(boost::string_ref const& header, dep_tree& root, dep_nod
 }
 
 //! The function creates a node for a header and fills its dependencies depending on the header contents
-void parse_cxx_source(boost::string_ref const& source, dep_tree& root, dep_node& node, bool create_reverse_dependencies)
+void parse_cxx_source(boost::string_ref const& source, dep_tree& root, dep_node& node, boost::filesystem::path const& header_dir, std::vector< boost::filesystem::path > const& include_dirs, bool create_reverse_dependencies)
 {
+    bool first_char_in_line = true;
     const char* p = source.data(), * const end = p + source.size();
     while (p != end)
     {
@@ -120,27 +151,31 @@ void parse_cxx_source(boost::string_ref const& source, dep_tree& root, dep_node&
         {
         case '#':
             {
-                p = skip_spaces(p + 1, end);
-                if ((end - p) > sizeof("include<>") && std::memcmp(p, "include", sizeof("include") - 1) == 0)
+                ++p;
+                if (first_char_in_line)
                 {
-                    p = skip_spaces(p + sizeof("include") - 1, end);
-                    if (p != end)
+                    p = skip_spaces(p, end);
+                    if ((end - p) > sizeof("include<>") && std::memcmp(p, "include", sizeof("include") - 1) == 0)
                     {
-                        const char* q;
-                        c = *p++;
-                        if (c == '<')
-                            q = find_closing_quote(p, end, '>');
-                        else if (c == '"')
-                            q = find_closing_quote(p, end, '"');
-                        else
-                            continue;
+                        p = skip_spaces(p + sizeof("include") - 1, end);
+                        if (p != end)
+                        {
+                            const char* q;
+                            c = *p++;
+                            if (c == '<')
+                                q = find_closing_quote(p, end, '>');
+                            else if (c == '"')
+                                q = find_closing_quote(p, end, '"');
+                            else
+                                break;
 
-                        add_include(boost::string_ref(p, q - p), root, node, create_reverse_dependencies);
-                        p = q + 1;
+                            add_include(boost::string_ref(p, q - p), root, node, header_dir, include_dirs, c == '"', create_reverse_dependencies);
+                            p = q + 1;
+                        }
                     }
                 }
             }
-            continue;
+            break;
 
         case '/':
             {
@@ -154,6 +189,25 @@ void parse_cxx_source(boost::string_ref const& source, dep_tree& root, dep_node&
                         p = skip_multi_line_comment(p, end);
                 }
             }
+            break;
+
+        case '\\':
+            {
+                // Handle line continuation. Tolerate spaces after the backslash.
+                p = skip_spaces(p + 1, end);
+                if (p != end && *p == '\r')
+                    ++p;
+                if (p != end && *p == '\n')
+                {
+                    ++p;
+                    continue;
+                }
+            }
+            break;
+
+        case '\n':
+            ++p;
+            first_char_in_line = true;
             continue;
 
         case '"':
@@ -161,40 +215,43 @@ void parse_cxx_source(boost::string_ref const& source, dep_tree& root, dep_node&
             p = find_closing_quote_with_escapes(p + 1, end, c);
             if (p != end)
                 ++p;
-            continue;
+            break;
 
         default:
             ++p;
-            continue;
+            break;
         }
+
+        first_char_in_line = false;
     }
 }
 
 } // namespace
 
 //! The function creates a node for a header and fills its dependencies depending on the header contents
-void parse_cxx(const char* path, dep_tree& root, bool create_reverse_dependencies)
+void parse_cxx(boost::filesystem::path const& path, dep_tree& root, std::vector< boost::filesystem::path > const& include_dirs, bool create_reverse_dependencies)
 {
+    std::string path_str = path.string();
     try
     {
-        boost::interprocess::file_mapping file(path, boost::interprocess::read_only);
+        boost::interprocess::file_mapping file(path_str.c_str(), boost::interprocess::read_only);
         boost::interprocess::mapped_region region(file, boost::interprocess::read_only);
 
-        dep_node* node = root.add_nested_child(path);
+        dep_node* node = root.add_nested_child(path_str);
 
-        parse_cxx_source(boost::string_ref(static_cast< const char* >(region.get_address()), region.get_size()), root, *node, create_reverse_dependencies);
+        parse_cxx_source(boost::string_ref(static_cast< const char* >(region.get_address()), region.get_size()), root, *node, path.parent_path(), include_dirs, create_reverse_dependencies);
     }
     catch (boost::interprocess::interprocess_exception& e)
     {
-        BOOST_THROW_EXCEPTION(boost::enable_error_info(std::runtime_error(std::string("Failed to open file for parsing: ") + e.what())) << file_name_info(path));
+        BOOST_THROW_EXCEPTION(boost::enable_error_info(std::runtime_error(std::string("Failed to open file for parsing: ") + e.what())) << file_name_info(path_str));
     }
     catch (boost::exception& e)
     {
-        e << file_name_info(path);
+        e << file_name_info(path_str);
         throw;
     }
     catch (std::exception& e)
     {
-        throw boost::enable_error_info(e) << file_name_info(path);
+        throw boost::enable_error_info(e) << file_name_info(path_str);
     }
 }

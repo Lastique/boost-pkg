@@ -122,6 +122,10 @@ public:
     BOOST_DELETED_FUNCTION(dep_node& operator=(dep_node const&))
 };
 
+//! A typedef to signify root nodes
 typedef dep_node dep_tree;
+
+//! The function reconstructs reverse dependencies between the tree nodes
+void reconstruct_reverse_dependencies(dep_tree& root);
 
 #endif // BOOST_PKG_DEP_TREE_DEP_TREE_HPP_INCLUDED_

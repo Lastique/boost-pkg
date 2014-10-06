@@ -141,3 +141,17 @@ void dep_node::add_dependent(boost::string_ref const& path, char separator)
 {
     add_dependent(get_root()->add_nested_child(path, separator));
 }
+
+//! The function reconstructs reverse dependencies between the tree nodes
+void reconstruct_reverse_dependencies(dep_tree& root)
+{
+    for (dep_node::node_set::const_iterator it = root.get_children().begin(), end = root.get_children().end(); it != end; ++it)
+    {
+        reconstruct_reverse_dependencies(const_cast< dep_node& >(*it));
+    }
+
+    for (dep_node::nodes::const_iterator it = root.get_dependencies().begin(), end = root.get_dependencies().end(); it != end; ++it)
+    {
+        (*it)->add_dependent(&root);
+    }
+}
