@@ -39,3 +39,4 @@ link_directories(${Boost_LIBRARY_DIRS})
 #add_definitions(-DBOOST_ALL_DYN_LINK=1)
 
 add_subdirectory(dep_tree/build)
+add_subdirectory(boost_dep/build)

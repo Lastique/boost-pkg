@@ -10,6 +10,9 @@
 
 #include <cstring>
 #include <stdexcept>
+#include <algorithm>
+#include <boost/ref.hpp>
+#include <boost/bind.hpp>
 #include <boost/throw_exception.hpp>
 #include <boost/exception/info.hpp>
 #include <boost/exception/enable_error_info.hpp>
@@ -19,6 +22,7 @@
 #include <boost/utility/string_ref.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <cxx_parser.hpp>
+#include <filesystem_ext.hpp>
 
 namespace {
 
@@ -93,19 +97,7 @@ inline const char* find_closing_quote_with_escapes(const char* p, const char* en
     }
 }
 
-//! Obtains the status of the file, ignoring any level of symlinks
-inline boost::filesystem::file_status peel_symlinks_status(boost::filesystem::path& path)
-{
-    boost::filesystem::file_status file_stat = boost::filesystem::status(path);
-    while (boost::filesystem::is_symlink(file_stat))
-    {
-        path = boost::filesystem::read_symlink(path);
-        file_stat = boost::filesystem::status(path);
-    }
-    return file_stat;
-}
-
-void add_include(boost::string_ref const& included_header, dep_tree& root, dep_node& node, boost::filesystem::path const& header_dir, std::vector< boost::filesystem::path > const& include_dirs, bool use_header_dir, bool create_reverse_dependencies)
+void add_include(boost::string_ref const& included_header, dep_tree& root, dep_node& node, boost::filesystem::path const& header_dir, bool use_header_dir, cxx_parser_params const& params)
 {
     boost::filesystem::path path(included_header.to_string());
     boost::filesystem::path full_path;
@@ -113,22 +105,20 @@ void add_include(boost::string_ref const& included_header, dep_tree& root, dep_n
     boost::filesystem::file_status file_stat;
     if (use_header_dir)
     {
-        full_path = header_dir / path;
-        file_stat = peel_symlinks_status(full_path);
+        full_path = peel_symlinks(header_dir / path, &file_stat);
     }
 
-    std::vector< boost::filesystem::path >::const_iterator it = include_dirs.begin(), end = include_dirs.end();
+    std::vector< boost::filesystem::path >::const_iterator it = params.include_dirs.begin(), end = params.include_dirs.end();
     for (; it != end && !boost::filesystem::is_regular_file(file_stat); ++it)
     {
-        full_path = *it / path;
-        file_stat = peel_symlinks_status(full_path);
+        full_path = peel_symlinks(*it / path, &file_stat);
     }
 
-    if (boost::filesystem::is_regular_file(file_stat))
+    if (boost::filesystem::is_regular_file(file_stat) && std::find_if(params.root_dirs.begin(), params.root_dirs.end(), boost::bind(&is_descendant, _1, boost::cref(full_path))) != params.root_dirs.end())
     {
         dep_node* other = root.add_nested_child(included_header);
         node.add_dependency(other);
-        if (create_reverse_dependencies)
+        if (params.create_reverse_dependencies)
         {
             other->add_dependent(&node);
         }
@@ -136,7 +126,7 @@ void add_include(boost::string_ref const& included_header, dep_tree& root, dep_n
 }
 
 //! The function creates a node for a header and fills its dependencies depending on the header contents
-void parse_cxx_source(boost::string_ref const& source, dep_tree& root, dep_node& node, boost::filesystem::path const& header_dir, std::vector< boost::filesystem::path > const& include_dirs, bool create_reverse_dependencies)
+void parse_cxx_source(boost::string_ref const& source, dep_tree& root, dep_node& node, boost::filesystem::path const& header_dir, cxx_parser_params const& params)
 {
     bool first_char_in_line = true;
     const char* p = source.data(), * const end = p + source.size();
@@ -169,7 +159,7 @@ void parse_cxx_source(boost::string_ref const& source, dep_tree& root, dep_node&
                             else
                                 break;
 
-                            add_include(boost::string_ref(p, q - p), root, node, header_dir, include_dirs, c == '"', create_reverse_dependencies);
+                            add_include(boost::string_ref(p, q - p), root, node, header_dir, c == '"', params);
                             p = q + 1;
                         }
                     }
@@ -228,18 +218,30 @@ void parse_cxx_source(boost::string_ref const& source, dep_tree& root, dep_node&
 
 } // namespace
 
+cxx_parser_params::cxx_parser_params() : create_reverse_dependencies(false)
+{
+}
+
 //! The function creates a node for a header and fills its dependencies depending on the header contents
-void parse_cxx(boost::filesystem::path const& path, dep_tree& root, std::vector< boost::filesystem::path > const& include_dirs, bool create_reverse_dependencies)
+void parse_cxx(boost::filesystem::path const& path, cxx_parser_params const& params, dep_tree& root)
 {
     std::string path_str = path.string();
     try
     {
-        boost::interprocess::file_mapping file(path_str.c_str(), boost::interprocess::read_only);
-        boost::interprocess::mapped_region region(file, boost::interprocess::read_only);
+        if (boost::filesystem::file_size(path) > 0)
+        {
+            boost::interprocess::file_mapping file(path_str.c_str(), boost::interprocess::read_only);
+            boost::interprocess::mapped_region region(file, boost::interprocess::read_only);
 
-        dep_node* node = root.add_nested_child(path_str);
+            dep_node* node = root.add_nested_child(path_str);
 
-        parse_cxx_source(boost::string_ref(static_cast< const char* >(region.get_address()), region.get_size()), root, *node, path.parent_path(), include_dirs, create_reverse_dependencies);
+            parse_cxx_source(boost::string_ref(static_cast< const char* >(region.get_address()), region.get_size()), root, *node, path.parent_path(), params);
+        }
+        else
+        {
+            // We can't map files of zero size, but we don't need to parse them either
+            root.add_nested_child(path_str);
+        }
     }
     catch (boost::interprocess::interprocess_exception& e)
     {

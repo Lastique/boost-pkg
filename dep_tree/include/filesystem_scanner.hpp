@@ -47,6 +47,6 @@ struct scan_params
 };
 
 //! The function scans Boost directory tree and builds header dependency tree. The function optionally detects Boost sublibraries and returns the nodes that correspond to the sublib directories.
-void scan_filesystem_tree(scan_params const& params, dep_tree& root, std::vector< dep_node* >* sublibs = NULL);
+void scan_filesystem_tree(boost::filesystem::path const& dir, scan_params const& params, dep_tree& root, std::vector< dep_node* >* sublibs = NULL);
 
 #endif // BOOST_PKG_DEP_TREE_FILESYSTEM_SCANNER_HPP_INCLUDED_

@@ -102,7 +102,7 @@ dep_node* dep_node::add_nested_child(boost::string_ref const& path, char separat
     boost::string_ref name = *p;
     while (!name.empty())
     {
-        node = add_child(name);
+        node = node->add_child(name);
         ++p;
         name = *p;
     }
