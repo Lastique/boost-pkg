@@ -46,7 +46,7 @@ int main(int argc, char* argv[])
             ("boost-root", po::value< std::string >(), "Boost root directory");
 
         po::options_description output_options("Output options");
-        input_options.add_options()
+        output_options.add_options()
             ("output,o", po::value< std::string >(), "output file (stdout by default)")
             ("format,f", po::value< std::string >()->default_value("json"), "output format (json by default)");
 
