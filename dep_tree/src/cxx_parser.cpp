@@ -11,8 +11,6 @@
 #include <cstring>
 #include <stdexcept>
 #include <algorithm>
-#include <boost/ref.hpp>
-#include <boost/bind.hpp>
 #include <boost/throw_exception.hpp>
 #include <boost/exception/info.hpp>
 #include <boost/exception/enable_error_info.hpp>
@@ -58,6 +56,7 @@ inline const char* skip_multi_line_comment(const char* p, const char* end)
         ++res;
         if (*res == '/')
             return ++res;
+        p = res;
     }
 
     return end;
@@ -68,7 +67,7 @@ inline const char* skip_spaces(const char* p, const char* end)
     while (p != end)
     {
         char c = *p;
-        if (c == ' ' || c == '\t')
+        if (c != ' ' && c != '\t')
             break;
         ++p;
     }
@@ -102,21 +101,24 @@ void add_include(boost::string_ref const& included_header, dep_tree& root, dep_n
     boost::filesystem::path path(included_header.to_string());
     boost::filesystem::path full_path;
 
+    bool found = false;
     boost::filesystem::file_status file_stat;
     if (use_header_dir)
     {
         full_path = peel_symlinks(header_dir / path, &file_stat);
+        found = boost::filesystem::is_regular_file(file_stat);
     }
 
     std::vector< boost::filesystem::path >::const_iterator it = params.include_dirs.begin(), end = params.include_dirs.end();
-    for (; it != end && !boost::filesystem::is_regular_file(file_stat); ++it)
+    for (; it != end && !found; ++it)
     {
         full_path = peel_symlinks(*it / path, &file_stat);
+        found = boost::filesystem::is_regular_file(file_stat);
     }
 
-    if (boost::filesystem::is_regular_file(file_stat) && std::find_if(params.root_dirs.begin(), params.root_dirs.end(), boost::bind(&is_descendant, _1, boost::cref(full_path))) != params.root_dirs.end())
+    if (found && is_descendant(params.boost_root, full_path))
     {
-        dep_node* other = root.add_nested_child(included_header);
+        dep_node* other = root.add_nested_child(make_relative(params.boost_root, full_path).string());
         node.add_dependency(other);
         if (params.create_reverse_dependencies)
         {
@@ -174,7 +176,11 @@ void parse_cxx_source(boost::string_ref const& source, dep_tree& root, dep_node&
                 {
                     c = *p++;
                     if (c == '/')
+                    {
                         p = skip_one_line_comment(p, end);
+                        first_char_in_line = true;
+                        continue;
+                    }
                     else if (c == '*')
                         p = skip_multi_line_comment(p, end);
                 }
@@ -207,6 +213,11 @@ void parse_cxx_source(boost::string_ref const& source, dep_tree& root, dep_node&
                 ++p;
             break;
 
+        case ' ':
+        case '\t':
+            ++p;
+            continue;
+
         default:
             ++p;
             break;
@@ -228,19 +239,21 @@ void parse_cxx(boost::filesystem::path const& path, cxx_parser_params const& par
     std::string path_str = path.string();
     try
     {
+        std::string node_path = make_relative(params.boost_root, path).string();
+
         if (boost::filesystem::file_size(path) > 0)
         {
             boost::interprocess::file_mapping file(path_str.c_str(), boost::interprocess::read_only);
             boost::interprocess::mapped_region region(file, boost::interprocess::read_only);
 
-            dep_node* node = root.add_nested_child(path_str);
+            dep_node* node = root.add_nested_child(node_path);
 
             parse_cxx_source(boost::string_ref(static_cast< const char* >(region.get_address()), region.get_size()), root, *node, path.parent_path(), params);
         }
         else
         {
             // We can't map files of zero size, but we don't need to parse them either
-            root.add_nested_child(path_str);
+            root.add_nested_child(node_path);
         }
     }
     catch (boost::interprocess::interprocess_exception& e)

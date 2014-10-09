@@ -74,28 +74,38 @@ void serialize_node(dep_node const& node, std::string const& newline_indent, std
 {
     std::string nested_newline_indent = newline_indent + indent;
 
-    strm << newline_indent << '"' << node.get_name() << "\":" << newline_indent << '{';
+    strm << newline_indent << '"' << node.get_name() << "\":";
 
-    bool is_first = true;
-    for (dep_node::node_set::const_iterator it = node.get_children().begin(), end = node.get_children().end(); it != end; ++it)
+    if (!node.get_children().empty() || !node.get_dependencies().empty() || !(with_rdeps && node.get_dependents().empty()))
     {
-        if (!is_first)
-            strm << ',';
-        else
-            is_first = false;
-        serialize_node(*it, nested_newline_indent, indent, with_rdeps, strm);
-    }
+        strm << newline_indent << '{';
 
-    if (!node.get_dependencies().empty() || !(with_rdeps && node.get_dependents().empty()))
+        bool is_first = true;
+        for (dep_node::node_set::const_iterator it = node.get_children().begin(), end = node.get_children().end(); it != end; ++it)
+        {
+            if (!is_first)
+                strm << ',';
+            else
+                is_first = false;
+            serialize_node(*it, nested_newline_indent, indent, with_rdeps, strm);
+        }
+
+        if (!node.get_dependencies().empty() || !(with_rdeps && node.get_dependents().empty()))
+        {
+            if (!is_first)
+                strm << ',';
+            else
+                is_first = false;
+            serialize_meta(node, nested_newline_indent, indent, with_rdeps, strm);
+        }
+
+        strm << newline_indent << '}';
+    }
+    else
     {
-        if (!is_first)
-            strm << ',';
-        else
-            is_first = false;
-        serialize_meta(node, nested_newline_indent, indent, with_rdeps, strm);
+        // Conserve some space for empty nodes
+        strm << " {}";
     }
-
-    strm << newline_indent << '}';
 }
 
 } // namespace

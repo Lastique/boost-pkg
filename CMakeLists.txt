@@ -5,6 +5,15 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+#  Uncomment the configuration you want, this will make the configuration default.
+#  Alternatively, you can run "cmake -D CMAKE_BUILD_TYPE=<conf> ." from command line so to explicitly specify configuration.
+   set(CMAKE_BUILD_TYPE RelWithDebInfo)
+#   set(CMAKE_BUILD_TYPE Release)
+#   set(CMAKE_BUILD_TYPE Debug)
+#   set(CMAKE_BUILD_TYPE MinSizeRel)
+endif()
+
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++0x")
 elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")

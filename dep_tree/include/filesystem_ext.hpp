@@ -12,6 +12,9 @@
 #define BOOST_PKG_DEP_TREE_FILESYSTEM_EXT_HPP_INCLUDED_
 
 #include <cstddef>
+#include <string>
+#include <stdexcept>
+#include <boost/throw_exception.hpp>
 #include <boost/filesystem/path.hpp>
 #include <boost/filesystem/operations.hpp>
 
@@ -36,6 +39,27 @@ inline bool is_descendant(boost::filesystem::path const& parent, boost::filesyst
     std::string d = boost::filesystem::system_complete(descendant).string();
     std::size_t parent_len = p.size();
     return parent_len <= d.size() && p.compare(0, parent_len, d.c_str(), parent_len) == 0;
+}
+
+//! Makes one path relative to the other
+inline boost::filesystem::path make_relative(boost::filesystem::path const& parent, boost::filesystem::path const& descendant)
+{
+    std::string p = boost::filesystem::system_complete(parent).string();
+    std::string d = boost::filesystem::system_complete(descendant).string();
+    std::size_t parent_len = p.size(), descendant_len = d.size();
+    if (parent_len <= d.size() && p.compare(0, parent_len, d.c_str(), parent_len) == 0)
+    {
+        std::size_t i = parent_len;
+        while (i < descendant_len && (d[i] == '/' || d[i] == '\\'))
+        {
+            ++i;
+        }
+        return boost::filesystem::path(d.c_str() + i);
+    }
+    else
+    {
+        BOOST_THROW_EXCEPTION(std::invalid_argument("Path \"" + d + "\" is not descendant of \"" + p + "\""));
+    }
 }
 
 #endif // BOOST_PKG_DEP_TREE_FILESYSTEM_EXT_HPP_INCLUDED_

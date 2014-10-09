@@ -195,9 +195,7 @@ void scan_filesystem_tree(boost::filesystem::path const& dir, scan_params const&
     BOOST_ASSERT(dir.is_absolute());
 
     cxx_parser_params cxx_params;
-    cxx_params.root_dirs.push_back(params.boost_root);
-    if (!is_descendant(params.boost_root, dir))
-        cxx_params.root_dirs.push_back(dir);
+    cxx_params.boost_root = params.boost_root;
     cxx_params.include_dirs = params.include_dirs;
     cxx_params.create_reverse_dependencies = params.create_reverse_dependencies;
     scan_directory(dir, params, cxx_params, root, root, sublibs, true);

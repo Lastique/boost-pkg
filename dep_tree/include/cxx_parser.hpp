@@ -23,8 +23,8 @@ typedef boost::error_info< struct file_name, std::string > file_name_info;
 //! Filesystem scanner parameters
 struct cxx_parser_params
 {
-    //! The parser will collect information for dependencies only under these root directories
-    std::vector< boost::filesystem::path > root_dirs;
+    //! Boost root directory
+    boost::filesystem::path boost_root;
     //! The parser will look for included headers in these directories
     std::vector< boost::filesystem::path > include_dirs;
     //! Whether the parser should also generate reverse dependencies (i.e. fill dependent lists)
