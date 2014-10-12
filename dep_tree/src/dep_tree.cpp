@@ -115,9 +115,12 @@ void dep_node::add_dependency(dep_node* node)
 {
     BOOST_ASSERT(node != NULL);
 
-    nodes::iterator it = std::lower_bound(m_dependencies.begin(), m_dependencies.end(), node);
-    if (it == m_dependencies.end() || node != *it)
-        m_dependencies.insert(it, node);
+    if (node != this)
+    {
+        nodes::iterator it = std::lower_bound(m_dependencies.begin(), m_dependencies.end(), node);
+        if (it == m_dependencies.end() || node != *it)
+            m_dependencies.insert(it, node);
+    }
 }
 
 //! Adds a dependency node identified by path from root node. The node is created, if needed.
@@ -131,9 +134,12 @@ void dep_node::add_dependent(dep_node* node)
 {
     BOOST_ASSERT(node != NULL);
 
-    nodes::iterator it = std::lower_bound(m_dependents.begin(), m_dependents.end(), node);
-    if (it == m_dependents.end() || node != *it)
-        m_dependents.insert(it, node);
+    if (node != this)
+    {
+        nodes::iterator it = std::lower_bound(m_dependents.begin(), m_dependents.end(), node);
+        if (it == m_dependents.end() || node != *it)
+            m_dependents.insert(it, node);
+    }
 }
 
 //! Adds a dependent node identified by path from root node. The node is created, if needed.

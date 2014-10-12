@@ -12,6 +12,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <algorithm>
+#include <boost/config.hpp>
 #include <boost/assert.hpp>
 #include <boost/throw_exception.hpp>
 #include <boost/filesystem/operations.hpp>
@@ -85,15 +86,14 @@ bool is_cxx_file(boost::filesystem::path const& path, std::vector< std::string >
             return true;
     }
 
-    // Consider everything in 'include' directory C++. This is needed for boost/compatibility and boost/tr1 - headers in there are difficult to match.
+    // Consider everything in 'include/boost' directory C++. This is needed for boost/compatibility and boost/tr1 - headers in there are difficult to match.
     // This hack should probably be a customization point.
-    for (boost::filesystem::path dir = path.parent_path(), include_dir = "include"; dir.has_parent_path(); dir = dir.parent_path())
-    {
-        if (dir.filename() == include_dir)
-            return true;
-    }
-
-    return false;
+    std::string str = path.string();
+    return std::strstr(str.c_str(), "include/boost") != NULL
+#if defined(BOOST_WINDOWS)
+        || std::strstr(str.c_str(), "include\\boost") != NULL
+#endif
+    ;
 }
 
 //! The function scans Boost directory tree and builds header dependency tree. The function optionally detects Boost sublibraries and returns the nodes that correspond to the sublib directories.
