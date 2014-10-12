@@ -105,15 +105,23 @@ void add_include(boost::string_ref const& included_header, dep_tree& root, dep_n
     boost::filesystem::file_status file_stat;
     if (use_header_dir)
     {
-        full_path = peel_symlinks(header_dir / path, &file_stat);
-        found = boost::filesystem::is_regular_file(file_stat);
+        full_path = header_dir / path;
+        if (boost::filesystem::exists(full_path))
+        {
+            full_path = recursive_peel_symlinks(params.boost_root, full_path, &file_stat);
+            found = boost::filesystem::is_regular_file(file_stat);
+        }
     }
 
     std::vector< boost::filesystem::path >::const_iterator it = params.include_dirs.begin(), end = params.include_dirs.end();
     for (; it != end && !found; ++it)
     {
-        full_path = peel_symlinks(*it / path, &file_stat);
-        found = boost::filesystem::is_regular_file(file_stat);
+        full_path = *it / path;
+        if (boost::filesystem::exists(full_path))
+        {
+            full_path = recursive_peel_symlinks(params.boost_root, full_path, &file_stat);
+            found = boost::filesystem::is_regular_file(file_stat);
+        }
     }
 
     if (found && is_descendant(params.boost_root, full_path))

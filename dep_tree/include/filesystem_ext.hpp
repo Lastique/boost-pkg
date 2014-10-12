@@ -18,18 +18,37 @@
 #include <boost/filesystem/path.hpp>
 #include <boost/filesystem/operations.hpp>
 
+//! Returns an equivalent path without the '.' and '..' elements
+inline boost::filesystem::path normalize_path(boost::filesystem::path const& path)
+{
+    boost::filesystem::path res;
+    for (boost::filesystem::path::const_iterator it = path.begin(), end = path.end(); it != end; ++it)
+    {
+        boost::filesystem::path elem = *it;
+        if (elem == "..")
+            res = res.parent_path();
+        else if (elem != ".")
+            res /= elem;
+    }
+    return res;
+}
+
 //! Follows all symlinks and returns the path that is referred to by the symlinks
 inline boost::filesystem::path peel_symlinks(boost::filesystem::path path, boost::filesystem::file_status* status = NULL)
 {
-    boost::filesystem::file_status file_stat = boost::filesystem::status(path);
+    boost::filesystem::file_status file_stat = boost::filesystem::symlink_status(path);
     while (boost::filesystem::is_symlink(file_stat))
     {
-        path = boost::filesystem::read_symlink(path);
-        file_stat = boost::filesystem::status(path);
+        boost::filesystem::path referred_path = boost::filesystem::read_symlink(path);
+        if (referred_path.is_relative())
+            path = path.parent_path() / referred_path;
+        else
+            path = referred_path;
+        file_stat = boost::filesystem::symlink_status(path);
     }
     if (status)
         *status = file_stat;
-    return path;
+    return normalize_path(boost::filesystem::system_complete(path));
 }
 
 //! Tests is one path is a descendant to the other
@@ -60,6 +79,19 @@ inline boost::filesystem::path make_relative(boost::filesystem::path const& pare
     {
         BOOST_THROW_EXCEPTION(std::invalid_argument("Path \"" + d + "\" is not descendant of \"" + p + "\""));
     }
+}
+
+//! Follows all symlinks and returns the path that is referred to by the symlinks. Does that for all directories up to the root path as well.
+inline boost::filesystem::path recursive_peel_symlinks(boost::filesystem::path const& root_path, boost::filesystem::path path, boost::filesystem::file_status* status = NULL)
+{
+    boost::filesystem::path relative_path = make_relative(root_path, path);
+
+    path = root_path;
+    for (boost::filesystem::path::const_iterator it = relative_path.begin(), end = relative_path.end(); it != end; ++it)
+    {
+        path = peel_symlinks(path / *it, status);
+    }
+    return path;
 }
 
 #endif // BOOST_PKG_DEP_TREE_FILESYSTEM_EXT_HPP_INCLUDED_
